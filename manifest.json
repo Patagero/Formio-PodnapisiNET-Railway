@@ -1,0 +1,13 @@
+{
+  "id": "podnapisi-railway-addon",
+  "version": "1.0.0",
+  "name": "Podnapisi.NET (Railway)",
+  "description": "Slovenski podnapisi iz Podnapisi.NET preko Railway.",
+  "types": ["subtitles"],
+  "catalogs": [],
+  "resources": [
+    "subtitles"
+  ],
+  "idPrefixes": ["tt"],
+  "logo": "https://www.podnapisi.net/static/img/logo.svg"
+}
