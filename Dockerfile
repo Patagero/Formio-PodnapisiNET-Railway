@@ -1,19 +1,16 @@
 FROM ghcr.io/puppeteer/puppeteer:latest
 
+# Railway dela kot user pptruser, ta user nima write perm na /app
+
 WORKDIR /app
 
-# Copy manifest separately (cache optimization)
-COPY manifest.json ./manifest.json
+# SAMO package.json, BREZ package-lock.json!!!!
+COPY package.json ./
 
-# Copy package files
-COPY package.json package-lock.json ./
+# Namestimo odvisnosti brez zapisovanja lockfile
+RUN npm install --omit=dev --no-package-lock --legacy-peer-deps
 
-# Install production deps
-RUN npm install --omit=dev --legacy-peer-deps
-
-# Copy full project
+# Kopiramo ostalo
 COPY . .
-
-EXPOSE 3000
 
 CMD ["node", "server.js"]
