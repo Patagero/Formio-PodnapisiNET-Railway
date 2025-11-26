@@ -1,17 +1,16 @@
 {
-  "name": "formio-podnapisinet-addon-railway",
+  "name": "formio-podnapisini-railway",
   "version": "1.0.0",
-  "description": "Formio Podnapisi.NET 🇸🇮 – Stremio addon (Railway + Puppeteer)",
+  "description": "Puppeteer + Podnapisi.net subtitles scraper for Railway",
   "main": "server.js",
   "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "adm-zip": "^0.5.10",
+    "express": "^4.19.2",
+    "cheerio": "^1.0.0-rc.12",
     "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "node-fetch": "^3.3.2",
-    "puppeteer": "^23.6.0"
+    "axios": "^1.6.8"
   }
 }

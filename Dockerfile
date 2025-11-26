@@ -1,21 +1,16 @@
 FROM ghcr.io/puppeteer/puppeteer:latest
 
-# Delovna mapa
 WORKDIR /app
 
-# Kopiramo SAMO package.json (lockfile odstranimo)
+# 1) Copy ONLY package.json first
 COPY package.json ./
 
-# Install dependencies
-RUN npm install --legacy-peer-deps --omit=dev
+# 2) Install deps
+RUN npm install --omit=dev --legacy-peer-deps
 
-# Kopiramo preostale datoteke
+# 3) Now copy EVERYTHING (including manifest.json)
 COPY . .
 
-# Railway port
-ENV PORT=8080
+EXPOSE 3000
 
-EXPOSE 8080
-
-# Start server.js
 CMD ["node", "server.js"]
