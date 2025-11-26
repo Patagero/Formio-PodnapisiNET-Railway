@@ -1,59 +1,71 @@
 import express from "express";
-import axios from "axios";
-import cheerio from "cheerio";
 import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import * as cheerio from "cheerio";
+import fetch from "node-fetch";
 
-// Naloži manifest.json (brez assert)
-const manifest = JSON.parse(fs.readFileSync("./manifest.json", "utf8"));
+// --- Fix za __dirname v ES modu ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+// --- Naloži manifest.json ---
+const manifestPath = path.join(__dirname, "manifest.json");
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+
+// --- Express server ---
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-app.get("/manifest.json", (req, res) => {
-  res.json(manifest);
+app.get("/", (req, res) => {
+  return res.json({
+    status: "OK",
+    message: "Podnapisi.NET Addon running",
+    manifest,
+  });
 });
 
-// === ENDPOINT ZA PODNAPISI.NET ===
+// --- Glavna API pot ---
+//  /subtitles/:imdb/:season/:episode
+app.get("/subtitles/:imdb/:season/:episode", async (req, res) => {
+  const { imdb, season, episode } = req.params;
 
-app.get("/subtitles/:imdbId", async (req, res) => {
   try {
-    const imdb = req.params.imdbId.replace("tt", "");
+    const url = `https://www.podnapisi.net/sl/subtitles/search/?keywords=&movie-imdb=${imdb}&seasons=${season}&episodes=${episode}`;
 
-    const url = `https://www.podnapisi.net/sl/subtitles/search/?keywords=${imdb}`;
-    const html = await axios.get(url);
-    const $ = cheerio.load(html.data);
+    const response = await fetch(url);
+    const html = await response.text();
 
-    const subtitles = [];
+    const $ = cheerio.load(html);
 
-    $("tr").each((i, el) => {
-      const lang = $(el).find("td:nth-child(3)").text().trim();
-      const link = $(el).find("a").attr("href");
+    let results = [];
 
-      if (lang.includes("Slovenski")) {
-        subtitles.push({
-          lang: "Slovenian",
-          url: "https://www.podnapisi.net" + link
+    $(".subtitle-entry").each((i, el) => {
+      const lang = $(el).find(".flag").attr("title") || "";
+      const downloadUrl = $(el).find(".download a").attr("href") || "";
+
+      if (downloadUrl) {
+        results.push({
+          lang,
+          url: `https://www.podnapisi.net${downloadUrl}`,
         });
       }
     });
 
-    res.json({ subtitles });
-
+    return res.json({
+      imdb,
+      season,
+      episode,
+      count: results.length,
+      subtitles: results,
+    });
   } catch (err) {
-    console.error("Napaka pri iskanju podnapisov:", err.message);
-    res.json({ subtitles: [] });
+    console.error("Subtitle fetch error:", err);
+    return res.status(500).json({ error: "Failed to load subtitles" });
   }
 });
 
-// Root redirect
-app.get("/", (req, res) => {
-  res.redirect("/manifest.json");
-});
-
-// Railway mora poslušati na 0.0.0.0
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("======================================");
-  console.log(` Formio Podnapisi.NET add-on listening`);
-  console.log(` PORT: ${PORT}`);
-  console.log("======================================");
+// --- Start server ---
+app.listen(PORT, () => {
+  console.log(`Addon running on port ${PORT}`);
 });
