@@ -1,71 +1,143 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import * as cheerio from "cheerio";
 import fetch from "node-fetch";
+import * as cheerio from "cheerio";
+import fs from "fs";
+import AdmZip from "adm-zip";
 
-// --- Fix za __dirname v ES modu ---
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const manifest = JSON.parse(fs.readFileSync("./manifest.json", "utf8"));
 
-// --- Naloži manifest.json ---
-const manifestPath = path.join(__dirname, "manifest.json");
-const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-
-// --- Express server ---
 const app = express();
-const PORT = process.env.PORT || 3000;
+app.use(express.json());
 
-app.get("/", (req, res) => {
-  return res.json({
-    status: "OK",
-    message: "Podnapisi.NET Addon running",
-    manifest,
-  });
-});
-
-// --- Glavna API pot ---
-//  /subtitles/:imdb/:season/:episode
-app.get("/subtitles/:imdb/:season/:episode", async (req, res) => {
-  const { imdb, season, episode } = req.params;
-
+// ---------------------------------------------------------------------
+// FETCH IMDB TITLE
+// ---------------------------------------------------------------------
+async function getImdbTitle(imdbId) {
   try {
-    const url = `https://www.podnapisi.net/sl/subtitles/search/?keywords=&movie-imdb=${imdb}&seasons=${season}&episodes=${episode}`;
+    const url = `https://www.omdbapi.com/?i=${imdbId}&apikey=564727fa`;
+    const r = await fetch(url);
+    const j = await r.json();
+    return j.Title || null;
+  } catch {
+    return null;
+  }
+}
 
-    const response = await fetch(url);
-    const html = await response.text();
+// ---------------------------------------------------------------------
+// SCRAPE PODNAPISI.NET
+// ---------------------------------------------------------------------
+async function scrapeSubtitles(keyword) {
+  const url =
+    "https://www.podnapisi.net/sl/subtitles/search/?" +
+    new URLSearchParams({
+      keywords: keyword,
+      language: "sl",
+    });
 
-    const $ = cheerio.load(html);
+  console.log("🌍 SCRAPING URL:", url);
 
-    let results = [];
+  const resp = await fetch(url);
+  const html = await resp.text();
+  const $ = cheerio.load(html);
 
-    $(".subtitle-entry").each((i, el) => {
-      const lang = $(el).find(".flag").attr("title") || "";
-      const downloadUrl = $(el).find(".download a").attr("href") || "";
+  const results = [];
 
-      if (downloadUrl) {
-        results.push({
-          lang,
-          url: `https://www.podnapisi.net${downloadUrl}`,
-        });
+  $(".subtitle-entry").each((i, el) => {
+    const a = $(el).find("a");
+    const page = a.attr("href");
+    const dl = $(el).find("a.download").attr("href");
+
+    if (!page) return;
+
+    results.push({
+      page: "https://www.podnapisi.net" + page,
+      download: dl ? "https://www.podnapisi.net" + dl : null,
+    });
+  });
+
+  return results;
+}
+
+// ---------------------------------------------------------------------
+// ZIP → SRT
+// ---------------------------------------------------------------------
+async function downloadAndExtract(url) {
+  console.log("⬇️ ZIP:", url);
+  try {
+    const r = await fetch(url);
+    const buf = Buffer.from(await r.arrayBuffer());
+    const zip = new AdmZip(buf);
+
+    for (const e of zip.getEntries()) {
+      if (e.entryName.endsWith(".srt")) {
+        return zip.readAsText(e);
       }
-    });
-
-    return res.json({
-      imdb,
-      season,
-      episode,
-      count: results.length,
-      subtitles: results,
-    });
+    }
   } catch (err) {
-    console.error("Subtitle fetch error:", err);
-    return res.status(500).json({ error: "Failed to load subtitles" });
+    console.log("❌ ZIP ERROR:", err.message);
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------
+// ROUTE: /subtitles/:type/:imdbId.json
+// ---------------------------------------------------------------------
+app.get("/subtitles/:type/:imdbId.json", async (req, res) => {
+  try {
+    const raw = req.params.imdbId;
+
+    let imdb = raw;
+    let S = null;
+    let E = null;
+
+    if (raw.includes(":")) {
+      const p = raw.split(":");
+      imdb = p[0];
+      S = p[1];
+      E = p[2];
+    }
+
+    console.log("🎬 Request:", raw);
+
+    const title = await getImdbTitle(imdb);
+    if (!title) return res.json({ subtitles: [] });
+
+    console.log(`🎬 IMDb: ${imdb} → ${title}`);
+
+    const subs = await scrapeSubtitles(title);
+
+    const collected = [];
+
+    for (const s of subs) {
+      if (!s.download) continue;
+      const srt = await downloadAndExtract(s.download);
+      if (!srt) continue;
+
+      collected.push({
+        lang: "sl",
+        srt,
+        source: s.download,
+      });
+    }
+
+    return res.json({ subtitles: collected });
+  } catch (err) {
+    console.log("❌ FATAL:", err);
+    return res.json({ subtitles: [] });
   }
 });
 
-// --- Start server ---
-app.listen(PORT, () => {
-  console.log(`Addon running on port ${PORT}`);
-});
+// ---------------------------------------------------------------------
+// MANIFEST
+// ---------------------------------------------------------------------
+app.get("/manifest.json", (req, res) => res.json(manifest));
+app.get("/", (req, res) => res.redirect("/manifest.json"));
+
+// ---------------------------------------------------------------------
+// START SERVER (IMPORTANT FOR RAILWAY)
+// ---------------------------------------------------------------------
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, "0.0.0.0", () =>
+  console.log(`🚀 Railway server running on ${PORT}`)
+);

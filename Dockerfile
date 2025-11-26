@@ -1,23 +1,22 @@
+# === BASE IMAGE (Puppeteer-ready Chromium) ===
 FROM ghcr.io/puppeteer/puppeteer:latest
 
-# Delovni direktorij
+# WORKDIR znotraj kontejnerja
 WORKDIR /app
 
-# Kopiramo package datoteke
+# Kopiramo manifest prej, da se cache ne lomi
+COPY manifest.json ./manifest.json
+
+# Kopiramo package.json in package-lock.json,
+# potem npm install kot root (podatki se ne smejo pisati nazaj v container)
 COPY package.json package-lock.json ./
 
-# Namestimo odvisnosti
-RUN npm install --omit=dev --legacy-peer-deps
+RUN npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
 
-# Kopiramo celoten projekt
+# Kopiramo preostale datoteke
 COPY . .
 
-# Puppeteer fix – omogoči zagon Chromium v Railway okolju
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-
-# Expose port (Railway ga ignorira, a dobro za lokalno)
+# Railway bo uporabil PORT environment variable
 EXPOSE 3000
 
-# Start aplikacije
 CMD ["node", "server.js"]
