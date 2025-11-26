@@ -2,15 +2,16 @@ FROM ghcr.io/puppeteer/puppeteer:latest
 
 WORKDIR /app
 
-# COPY manifest first
+# Copy manifest separately (cache optimization)
 COPY manifest.json ./manifest.json
 
-# ONLY package.json (NO package-lock)
-COPY package.json ./
+# Copy package files
+COPY package.json package-lock.json ./
 
-RUN npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+# Install production deps
+RUN npm install --omit=dev --legacy-peer-deps
 
-# Copy project files
+# Copy full project
 COPY . .
 
 EXPOSE 3000

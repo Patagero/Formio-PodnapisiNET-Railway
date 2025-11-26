@@ -1,16 +1,18 @@
 {
   "name": "formio-podnapisini-railway",
   "version": "1.0.0",
-  "description": "Puppeteer + Podnapisi.net subtitles scraper for Railway",
+  "description": "Podnapisi.net subtitles scraper for Railway",
   "main": "server.js",
   "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
+    "express": "^4.19.2",
     "axios": "^1.6.8",
     "cheerio": "^1.1.2",
+    "adm-zip": "^0.5.12",
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "node-fetch": "^3.3.2"
   }
 }
