@@ -2,17 +2,15 @@ FROM ghcr.io/puppeteer/puppeteer:latest
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json ./
+# Kopiramo SAMO package.json
+COPY package.json ./
 
-# Install dependencies
+# Namestimo odvisnosti kot pptruser
 RUN npm install --omit=dev --legacy-peer-deps
 
-# Copy project files
+# Skopiramo preostanek projekta
 COPY . .
 
-# Expose port for Railway
-EXPOSE 3000
+EXPOSE 8080
 
-# Start server.js
 CMD ["node", "server.js"]
