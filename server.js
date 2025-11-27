@@ -1,9 +1,14 @@
 import express from "express";
 import cors from "cors";
+import fetch from "node-fetch";
+import { load } from "cheerio";
 
 const app = express();
 app.use(cors());
 
+// ------------------
+// MANIFEST
+// ------------------
 const manifest = {
     id: "podnapisinet-sl-fast",
     version: "1.0.0",
@@ -19,31 +24,34 @@ const manifest = {
     }
 };
 
+// manifest.json endpoint
 app.get("/manifest.json", (req, res) => {
     res.json(manifest);
 });
 
-// ⭐ FAST SCRAPER – brez Puppeteer, HTML fetch
-import fetch from "node-fetch";
-import cheerio from "cheerio";
-
+// ------------------
+// SUBTITLES SCRAPER
+// ------------------
 app.get("/subtitles/:type/:imdb", async (req, res) => {
     try {
         const imdb = req.params.imdb.replace("tt", "");
         const url = `https://podnapisi.net/subtitles/search/?keywords=${imdb}&language=sl`;
 
-        const html = await fetch(url).then(r => r.text());
-        const $ = cheerio.load(html);
+        const response = await fetch(url);
+        const html = await response.text();
 
+        const $ = load(html);
         const subtitles = [];
 
         $(".subtitle-entry").each((i, el) => {
             const id = $(el).attr("data-id");
             const title = $(el).find(".release").text().trim();
 
+            if (!id || !title) return;
+
             subtitles.push({
-                id,
-                title,
+                id: id,
+                title: title,
                 lang: "slv",
                 url: `https://podnapisi.net/subtitles/${id}/download`
             });
@@ -57,8 +65,9 @@ app.get("/subtitles/:type/:imdb", async (req, res) => {
     }
 });
 
+// ROOT endpoint
 app.get("/", (req, res) => {
-    res.send("✔ Podnapisi.NET FAST addon running!<br>Use /manifest.json");
+    res.send("✔ Podnapisi.NET FAST addon running! Use /manifest.json");
 });
 
 const PORT = process.env.PORT || 8080;
