@@ -2,9 +2,11 @@
   "id": "podnapisinet-sl-fast",
   "version": "1.0.0",
   "name": "Podnapisi.NET FAST (SL)",
-  "description": "Fast Slovenian subtitles addon without Puppeteer",
-  "resources": ["subtitles"],
+  "description": "Ultra hitri slovenski podnapisi iz Podnapisi.NET (brez Puppeteer).",
   "types": ["movie", "series"],
+  "catalogs": [],
+  "resources": ["subtitles"],
   "idPrefixes": ["tt"],
-  "catalogs": []
+  "logo": "https://podnapisi.net/static/logo-black.png",
+  "behaviorHints": { "configurable": false }
 }
