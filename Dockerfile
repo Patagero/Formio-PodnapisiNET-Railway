@@ -1,16 +1,12 @@
-FROM ghcr.io/puppeteer/puppeteer:latest
-
-# Railway dela kot user pptruser, ta user nima write perm na /app
+FROM node:22-slim
 
 WORKDIR /app
 
-# SAMO package.json, BREZ package-lock.json!!!!
-COPY package.json ./
+COPY package.json package-lock.json ./
+RUN npm install --omit=dev --legacy-peer-deps
 
-# Namestimo odvisnosti brez zapisovanja lockfile
-RUN npm install --omit=dev --no-package-lock --legacy-peer-deps
-
-# Kopiramo ostalo
 COPY . .
+
+EXPOSE 8080
 
 CMD ["node", "server.js"]

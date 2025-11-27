@@ -1,13 +1,95 @@
-{
-  "id": "podnapisi-railway-addon",
-  "version": "1.0.0",
-  "name": "Podnapisi.NET (Railway)",
-  "description": "Slovenski podnapisi iz Podnapisi.NET preko Railway.",
-  "types": ["subtitles"],
-  "catalogs": [],
-  "resources": [
-    "subtitles"
-  ],
-  "idPrefixes": ["tt"],
-  "logo": "https://www.podnapisi.net/static/img/logo.svg"
+import express from "express";
+import fetch from "node-fetch";
+import cheerio from "cheerio";
+import fs from "fs";
+
+const manifest = JSON.parse(fs.readFileSync("./manifest.json", "utf8"));
+const app = express();
+
+app.get("/manifest.json", (req, res) => res.json(manifest));
+
+/**
+ * Pretvori IMDB ID + S/E → Podnapisi.net link
+ */
+function buildSearchUrl(title, season, episode) {
+  const keywords = encodeURIComponent(title);
+  let url = `https://www.podnapisi.net/sl/subtitles/search/?keywords=${keywords}&language=sl`;
+
+  if (season && episode) {
+    url += `&seasons=${season}&episodes=${episode}`;
+  }
+
+  return url;
 }
+
+/**
+ * Scrape podnapisov s strani (BREZ Puppeteer)
+ */
+async function scrapeSubs(title, season, episode) {
+  const url = buildSearchUrl(title, season, episode);
+
+  const html = await fetch(url).then((r) => r.text());
+  const $ = cheerio.load(html);
+
+  const subs = [];
+
+  $(".subtitle-entry").each((_, el) => {
+    const lang = $(el).find(".flag").attr("title")?.toLowerCase();
+    if (lang !== "slovenščina") return;
+
+    const download = $(el).find("a.download").attr("href");
+    const version = $(el).find(".release").text().trim();
+
+    if (download) {
+      subs.push({
+        id: download,
+        url: "https://www.podnapisi.net" + download,
+        lang: "sl",
+        encoding: "utf-8",
+        title: version || "Slovenski podnapisi",
+      });
+    }
+  });
+
+  return subs;
+}
+
+/**
+ * STREMIO: /subtitles/:imdbId.json
+ * primer: /subtitles/tt0944947:1:2.json
+ */
+app.get("/subtitles/:id.json", async (req, res) => {
+  const raw = req.params.id;
+
+  // Primer: tt0944947:1:2
+  const parts = raw.split(":");
+  const imdb = parts[0];
+  const season = parts[1] || null;
+  const episode = parts[2] || null;
+
+  console.log("REQ:", { raw, imdb, season, episode });
+
+  // Dobimo IMDB title iz API-ja
+  const meta = await fetch(
+    `https://v3.sg.media-imdb.com/suggestion/t/${imdb}.json`
+  ).then((r) => r.json());
+
+  const title = meta.d?.[0]?.l || "Unknown";
+
+  console.log("TITLE:", title);
+
+  const subs = await scrapeSubs(title, season, episode);
+
+  res.json({ subtitles: subs });
+});
+
+// ROOT → manifest.json
+app.get("/", (_, res) => res.redirect("/manifest.json"));
+
+// LISTEN
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+  console.log("===============================================");
+  console.log(`🚀 Podnapisi Addon running on port ${PORT}`);
+  console.log("===============================================");
+});
