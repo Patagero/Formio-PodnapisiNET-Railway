@@ -1,70 +1,53 @@
 import express from "express";
 import fetch from "node-fetch";
-import cors from "cors";
 
 const app = express();
-app.use(cors());
+const PORT = process.env.PORT || 8080;
 
-const BASE = "https://www.podnapisi.net";
+app.get("/manifest.json", (req, res) => {
+    res.sendFile(new URL("./manifest.json", import.meta.url).pathname);
+});
 
-// ---- Helper: extract download link from HTML ----
-function extractLink(html) {
-    const match = html.match(/href="(\/subtitles\/serve\/[^"]+)/);
-    if (!match) return null;
-    return BASE + match[1];
-}
-
-// ---- Helper: extract subtitle title ----
-function extractTitle(html) {
-    const match = html.match(/<title>(.*?)<\/title>/i);
-    return match ? match[1].replace(" - Podnapisi.NET", "") : "Slovenski podnapisi";
-}
-
-// ---- MAIN SUBTITLE ROUTE ----
-app.get("/subtitles/:type/:imdb/:season?/:episode?", async (req, res) => {
+// 🔥 FAST SCRAPER: brez Puppeteer, samo fetch HTML:
+async function fetchSubtitles(imdbId) {
     try {
-        const { imdb, type, season, episode } = req.params;
-        const imdbId = imdb.replace("tt", "");
-
-        let url = `${BASE}/sl/subtitles/search/?keywords=${imdbId}&language=2`;
-
-        if (type === "series" && season && episode) {
-            url += `&s=${season}&e=${episode}`;
-        }
+        const url = `https://www.podnapisi.net/sl/subtitles/search/?keywords=&imdbId=${imdbId}&language=sl`;
 
         const html = await fetch(url).then(r => r.text());
 
-        const link = extractLink(html);
-        if (!link) return res.json({ subtitles: [] });
+        const regex = /href="\/sl\/subtitles\/(\d+)-[^"]+"/g;
+        const ids = [...html.matchAll(regex)].map(m => m[1]);
 
-        const title = extractTitle(html);
+        if (ids.length === 0) return [];
 
-        const result = {
-            subtitles: [
-                {
-                    id: link,
-                    url: link,
-                    lang: "sl",
-                    title: title,
-                    format: "srt"
-                }
-            ]
-        };
+        return ids.map(id => ({
+            id: id,
+            url: `https://www.podnapisi.net/sl/subtitles/${id}/download`,
+            lang: "sl",
+            type: "subtitle",
+            name: "Slovenian"
+        }));
 
-        res.json(result);
-    } catch (err) {
-        console.error("Subtitle error:", err);
-        res.json({ subtitles: [] });
+    } catch (e) {
+        console.error("Error scraping:", e);
+        return [];
     }
+}
+
+app.get("/subtitles/:imdb_id/:type/:extra?.json", async (req, res) => {
+    const imdbId = req.params.imdb_id.replace("tt", "");
+
+    const subs = await fetchSubtitles(imdbId);
+
+    res.json({
+        subtitles: subs
+    });
 });
 
-// ---- ROOT -> MANIFEST ----
-app.get("/manifest.json", (req, res) => {
-    res.sendFile(process.cwd() + "/manifest.json");
+app.get("/", (_, res) => {
+    res.send("✔ Podnapisi.NET FAST addon running!");
 });
 
-// ---- START SERVER ----
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-    console.log("🚀 FAST PodnapisiNET SL running on port", PORT);
-});
+app.listen(PORT, () =>
+    console.log("🚀 FAST Podnapisi.NET addon running on port", PORT)
+);
