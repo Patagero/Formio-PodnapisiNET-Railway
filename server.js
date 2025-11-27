@@ -4,50 +4,58 @@ import fetch from "node-fetch";
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// ---- MANIFEST ----
+const manifest = {
+  id: "podnapisinet-sl-fast",
+  version: "1.0.0",
+  name: "Podnapisi.NET (SL) – FAST",
+  description: "Hitri slovenski podnapisi iz Podnapisi.NET (brez Puppeteer)",
+  types: ["movie", "series"],
+  catalogs: [],
+  resources: ["subtitles"],
+  idPrefixes: ["tt"]
+};
+
+// Serve manifest.json
 app.get("/manifest.json", (req, res) => {
-    res.sendFile(new URL("./manifest.json", import.meta.url).pathname);
+  res.json(manifest);
 });
 
-// 🔥 FAST SCRAPER: brez Puppeteer, samo fetch HTML:
-async function fetchSubtitles(imdbId) {
-    try {
-        const url = `https://www.podnapisi.net/sl/subtitles/search/?keywords=&imdbId=${imdbId}&language=sl`;
+// Root
+app.get("/", (req, res) => {
+  res.send("✓ Podnapisi.NET FAST addon running!");
+});
 
-        const html = await fetch(url).then(r => r.text());
+// ---- SUBTITLES FUNCTION ----
+app.get("/subtitles/:type/:id.json", async (req, res) => {
+  const imdb = req.params.id.replace("tt", "");
 
-        const regex = /href="\/sl\/subtitles\/(\d+)-[^"]+"/g;
-        const ids = [...html.matchAll(regex)].map(m => m[1]);
+  const searchUrl = `https://podnapisi.net/subtitles/search/old?sXML=1&sL=8&sK=${imdb}`;
 
-        if (ids.length === 0) return [];
+  try {
+    const r = await fetch(searchUrl);
+    const xml = await r.text();
 
-        return ids.map(id => ({
-            id: id,
-            url: `https://www.podnapisi.net/sl/subtitles/${id}/download`,
-            lang: "sl",
-            type: "subtitle",
-            name: "Slovenian"
-        }));
+    // Super simplifikacija: če ima IMDB podnapise, dodamo link.
+    const subtitles = [];
 
-    } catch (e) {
-        console.error("Error scraping:", e);
-        return [];
+    if (xml.includes("<subtitle")) {
+      // Podnapisi.NET direct download link
+      subtitles.push({
+        id: "sl",
+        url: `https://podnapisi.net/subtitles/search/old?sK=${imdb}&sJ=0&sXML=0`,
+        lang: "Slovenian",
+        format: "srt"
+      });
     }
-}
 
-app.get("/subtitles/:imdb_id/:type/:extra?.json", async (req, res) => {
-    const imdbId = req.params.imdb_id.replace("tt", "");
-
-    const subs = await fetchSubtitles(imdbId);
-
-    res.json({
-        subtitles: subs
-    });
-});
-
-app.get("/", (_, res) => {
-    res.send("✔ Podnapisi.NET FAST addon running!");
+    res.json(subtitles);
+  } catch (err) {
+    console.error("Error:", err);
+    res.json([]);
+  }
 });
 
 app.listen(PORT, () =>
-    console.log("🚀 FAST Podnapisi.NET addon running on port", PORT)
+  console.log(`Podnapisi.NET FAST addon running on ${PORT}`)
 );
