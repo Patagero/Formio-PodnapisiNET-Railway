@@ -1,61 +1,56 @@
 import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
-import fs from "fs";
 
 const app = express();
-const PORT = process.env.PORT || 8080;
-
 app.use(cors());
 
-// LOAD MANIFEST
-const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+const PORT = process.env.PORT || 8080;
 
-// Root check
 app.get("/", (req, res) => {
-    res.send("✔ Podnapisi.NET FAST addon running!");
+    res.send("✓ Podnapisi.NET FAST addon running!");
 });
 
-// Serve manifest.json
-app.get("/manifest.json", (req, res) => {
-    res.json(manifest);
-});
-
-// FAST subtitles endpoint
-app.get("/subtitles/:type/:id.json", async (req, res) => {
+// helper: get JSON safely
+async function get(url) {
     try {
-        const imdbId = req.params.id.replace("tt", "");
-
-        const url = `https://podnapisi.net/subtitles/search/advanced?imdbId=${imdbId}&language=sl`;
-
-        const html = await fetch(url).then(r => r.text());
-
-        // Extract subtitles via REGEX (FAST)
-        const regex = /href="\/subtitles\/(\d+)-[^"]+"/g;
-
-        const results = [];
-        let match;
-        while ((match = regex.exec(html)) !== null) {
-            const pid = match[1];
-            results.push({
-                id: pid,
-                url: `https://podnapisi.net/subtitles/${pid}/download`,
-                lang: "sl",
-                ext: "srt"
-            });
-        }
-
-        return res.json({
-            subtitles: results
+        const r = await fetch(url, {
+            headers: {
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json"
+            }
         });
-
-    } catch (err) {
-        console.error("ERROR:", err);
-        res.json({ subtitles: [] });
+        return await r.json();
+    } catch (e) {
+        return null;
     }
+}
+
+/*
+   MAIN ENDPOINT  
+   /subtitles/movie/:imdb/:filename.json
+*/
+app.get("/subtitles/movie/:imdb/:filename", async (req, res) => {
+    const imdb_id = req.params.imdb.replace("tt", "");
+
+    const apiUrl = `https://podnapisi.net/api/v1/subtitles?imdb_id=${imdb_id}&languages=sl`;
+
+    const data = await get(apiUrl);
+
+    if (!data || !data.data || data.data.length === 0)
+        return res.json({ subtitles: [] });
+
+    const subtitles = data.data.map(s => ({
+        id: s.id,
+        lang: "sl",
+        url: `https://podnapisi.net/subtitles/${s.attributes.download}`,
+        hearing_impaired: s.attributes.hearing_impaired,
+        fps: s.attributes.fps,
+        release: s.attributes.release,
+        encoding: "UTF-8"
+    }));
+
+    return res.json({ subtitles });
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`✔ FAST subtitling addon running at port ${PORT}`);
-});
+app.listen(PORT, () => console.log("FAST Podnapisi addon running on", PORT));

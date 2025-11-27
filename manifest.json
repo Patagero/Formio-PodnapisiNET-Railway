@@ -1,14 +1,10 @@
 {
-  "id": "podnapisinet-sl-fast",
+  "id": "podnapisinet-fast",
   "version": "1.0.0",
-  "name": "Podnapisi.NET FAST (SL only)",
-  "description": "Hiter Podnapisi.NET Stremio addon – samo slovenski podnapisi.",
+  "name": "Podnapisi.NET FAST (SL)",
+  "description": "Slovenski podnapisi – FAST API brez Puppeteerja",
   "types": ["movie", "series"],
   "catalogs": [],
   "resources": ["subtitles"],
-  "idPrefixes": ["tt"],
-  "behaviorHints": {
-    "configurable": false,
-    "configurationRequired": false
-  }
+  "idPrefixes": ["tt"]
 }
