@@ -1,15 +1,21 @@
-# IGNORE node_modules
+# Node
 node_modules/
-
-# IGNORE log files
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# IGNORE system files
+# Lockfiles (Railway jih ne mara)
+package-lock.json
+npm-shrinkwrap.json
+
+# Logs
+logs/
+*.log
+
+# System
 .DS_Store
 Thumbs.db
 
-# DO NOT IGNORE package files
-!package.json
-!package-lock.json
+# Environment
+.env
+.env.local
