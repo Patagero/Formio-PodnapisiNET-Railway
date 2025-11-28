@@ -1,8 +1,8 @@
 {
-  "id": "podnapisinet-fast-sl",
+  "id": "podnapisinet-sl-fast",
   "version": "1.0.0",
   "name": "Podnapisi.NET FAST (SL)",
-  "description": "Hitri slovenski podnapisi brez Puppeteerja",
+  "description": "FAST subtitles scraper (Slovenian only).",
   "types": ["movie", "series"],
   "catalogs": [],
   "resources": ["subtitles"],

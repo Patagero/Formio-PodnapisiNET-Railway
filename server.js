@@ -1,42 +1,69 @@
 import express from "express";
+import cors from "cors";
 import fetch from "node-fetch";
-import path from "path";
-import { fileURLToPath } from "url";
+import * as cheerio from "cheerio";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-
-// ---------- MANIFEST ----------
-app.get("/manifest.json", (req, res) => {
-    res.sendFile(path.join(__dirname, "manifest.json"));
-});
-
-// ---------- SEARCH ----------
-app.get("/subtitles/:type/:imdbid", async (req, res) => {
-    const imdb = req.params.imdbid.replace("tt", "");
-
-    try {
-        const url = `https://www.podnapisi.net/subtitles/search/imdbid-${imdb}/slo`;
-
-        const html = await fetch(url).then(r => r.text());
-
-        const results = [...html.matchAll(/href="(\/subtitles\/.*?)".*?class="release">([^<]+)/gs)]
-            .map(m => ({
-                id: m[1],
-                filename: m[2],
-                lang: "sl-SI"
-            }));
-
-        res.json({ subtitles: results });
-
-    } catch (e) {
-        res.json({ subtitles: [] });
-    }
-});
-
-app.get("/", (req, res) => {
-    res.send("✔ Podnapisi.NET FAST addon running!");
-});
+app.use(cors());
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log("FAST addon running on port", PORT));
+
+const manifest = {
+  id: "podnapisinet-sl-fast",
+  version: "1.0.0",
+  name: "Podnapisi.NET FAST (SL)",
+  description: "FAST subtitles scraper (Slovenian only).",
+  types: ["movie", "series"],
+  logo: "https://www.podnapisi.net/static/media/logo.c41e.png",
+  catalogs: [],
+  resources: ["subtitles"],
+  idPrefixes: ["tt"]
+};
+
+// Serve manifest.json
+app.get("/manifest.json", (req, res) => {
+  res.json(manifest);
+});
+
+// Fast subtitle scraper route
+app.get("/subtitles/:type/:imdbId.json", async (req, res) => {
+  const imdbId = req.params.imdbId;
+  const url = `https://podnapisi.net/subtitles/search/advanced?keywords=${imdbId}&language=sl`;
+
+  try {
+    const html = await fetch(url).then(r => r.text());
+    const $ = cheerio.load(html);
+
+    let out = [];
+
+    $(".subtitle-entry").each((i, el) => {
+      const title = $(el).find(".release").text().trim();
+      const link = $(el).find("a").attr("href");
+
+      if (!link) return;
+
+      out.push({
+        id: imdbId,
+        type: "movie",
+        lang: "slv",
+        url: "https://podnapisi.net" + link,
+        filename: title
+      });
+    });
+
+    res.json(out);
+  } catch (err) {
+    console.error(err);
+    res.json([]);
+  }
+});
+
+// Root check
+app.get("/", (req, res) => {
+  res.send("✓ Podnapisi.NET FAST addon running!");
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Podnapisi.NET FAST running on port ${PORT}`);
+});
