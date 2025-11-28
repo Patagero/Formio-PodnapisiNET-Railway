@@ -1,12 +1,10 @@
 {
-  "id": "podnapisinet-sl-fast",
+  "id": "podnapisinet-fast-sl",
   "version": "1.0.0",
   "name": "Podnapisi.NET FAST (SL)",
-  "description": "Ultra hitri slovenski podnapisi iz Podnapisi.NET (brez Puppeteer).",
+  "description": "Hitri slovenski podnapisi brez Puppeteerja",
   "types": ["movie", "series"],
   "catalogs": [],
   "resources": ["subtitles"],
-  "idPrefixes": ["tt"],
-  "logo": "https://podnapisi.net/static/logo-black.png",
-  "behaviorHints": { "configurable": false }
+  "idPrefixes": ["tt"]
 }
