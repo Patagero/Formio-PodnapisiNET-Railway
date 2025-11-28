@@ -1,10 +1,11 @@
 {
-  "id": "podnapisinet-fast",
+  "id": "podnapisinet-sl-fast",
   "version": "1.0.0",
   "name": "Podnapisi.NET FAST",
-  "description": "Ultra fast subtitles from Podnapisi.NET",
-  "types": ["subtitles"],
+  "description": "Hitri slovenski podnapisi (Railway)",
+  "types": ["movie", "series"],
   "catalogs": [],
   "resources": ["subtitles"],
-  "subtitleLanguages": ["sl", "en", "hr", "sr", "bs"]
+  "idPrefixes": ["tt"],
+  "contactEmail": "none@none.com"
 }
