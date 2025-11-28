@@ -1,11 +1,10 @@
 {
-  "id": "podnapisinet-sl-fast",
+  "id": "podnapisinet-fast-sl",
   "version": "1.0.0",
-  "name": "Podnapisi.NET FAST",
-  "description": "Hitri slovenski podnapisi (Railway)",
-  "types": ["movie", "series"],
+  "name": "Podnapisi.NET FAST (SL)",
+  "description": "Hitri slovenski podnapisi iz Podnapisi.NET brez Puppeteerja",
+  "types": ["subtitles"],
   "catalogs": [],
   "resources": ["subtitles"],
-  "idPrefixes": ["tt"],
-  "contactEmail": "none@none.com"
+  "idPrefixes": ["tt"]
 }

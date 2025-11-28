@@ -1,54 +1,54 @@
 import express from "express";
 import cors from "cors";
 import fetch from "node-fetch";
+import * as cheerio from "cheerio";
 
 const app = express();
 app.use(cors());
 
+const BASE = "https://www.podnapisi.net";
+
 app.get("/", (req, res) => {
-    res.send("✔ Podnapisi.NET FAST addon running!");
+  res.send("✔ Podnapisi.NET FAST SL running!");
 });
 
-// MANIFEST
 app.get("/manifest.json", (req, res) => {
-    res.json({
-        id: "podnapisinet-sl-fast",
-        version: "1.0.0",
-        name: "Podnapisi.NET FAST",
-        description: "Hitri slovenski podnapisi",
-        types: ["movie", "series"],
-        catalogs: [],
-        resources: ["subtitles"],
-        idPrefixes: ["tt"],
+  res.sendFile(process.cwd() + "/manifest.json");
+});
+
+app.get("/subtitles/:type/:imdb", async (req, res) => {
+  const imdb = req.params.imdb.replace("tt", "");
+
+  const url =
+    `${BASE}/sl/subtitles/search/?keywords=&movie_slug=&imdb_id=${imdb}&year=&seasons=&episode=&sub_language=sl&format=&sort=downloads`;
+
+  try {
+    const html = await fetch(url).then(r => r.text());
+    const $ = cheerio.load(html);
+
+    const subtitles = [];
+
+    $(".table tbody tr").each((i, row) => {
+      const link = $(row).find("a").attr("href");
+      const title = $(row).find("a").text().trim();
+
+      if (!link) return;
+
+      subtitles.push({
+        id: "sl-" + i,
+        lang: "sl",
+        downloads: 100,
+        name: title,
+        url: BASE + link
+      });
     });
+
+    res.json({ subtitles });
+  } catch (e) {
+    console.error("Scrape error:", e);
+    res.json({ subtitles: [] });
+  }
 });
 
-// SUBTITLES ROUTE
-app.get("/subtitles/:type/:imdbId.json", async (req, res) => {
-    const imdb = req.params.imdbId.replace("tt", "");
-
-    try {
-        const api = `https://podnapisi.net/subtitles/search/?movie_imdb=${imdb}&languages=sl`;
-        const html = await fetch(api).then(r => r.text());
-
-        const results = [];
-        const regex = /href="([^"]+download[^"]+)"/g;
-
-        let m;
-        while ((m = regex.exec(html)) !== null) {
-            results.push({
-                id: m[1],
-                url: "https://podnapisi.net" + m[1],
-                lang: "sl",
-                type: "srt"
-            });
-        }
-
-        res.json({ subtitles: results });
-    } catch (err) {
-        res.json({ subtitles: [] });
-    }
-});
-
-// START
-app.listen(3000, () => console.log("Addon running on port 3000"));
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log("▶ FAST SL addon listening on port", PORT));
