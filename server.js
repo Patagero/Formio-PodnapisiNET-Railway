@@ -1,63 +1,64 @@
 import express from "express";
-import fetch from "node-fetch";
 import cors from "cors";
+import fetch from "node-fetch";
+import cheerio from "cheerio";
 
 const app = express();
 app.use(cors());
 
-const MANIFEST = {
-  id: "podnapisinet-fast-sl",
-  version: "1.0.0",
-  name: "Podnapisi.NET FAST (SL)",
-  description: "Hitri slovenski podnapisi iz Podnapisi.NET",
-  catalogs: [],
-  resources: ["subtitles"],
-  types: ["movie", "series"],
-  idPrefixes: ["tt"],
-};
+const PORT = process.env.PORT || 8080;
 
-// manifest
-app.get("/manifest.json", (req, res) => {
-  res.json(MANIFEST);
-});
-
-// subtitles route
-app.get("/subtitles/:type/:id.json", async (req, res) => {
-  const imdbId = req.params.id.replace(".json", "");
-
-  const URL =
-    "https://podnapisi.net/subtitles/search/?tbsl=1&sXML=1&movie=" + imdbId;
-
-  try {
-    const xml = await fetch(URL).then(r => r.text());
-
-    // SL podnapisi filter
-    const items = [...xml.matchAll(/<subtitle>([\s\S]*?)<\/subtitle>/g)]
-      .map(m => m[1])
-      .filter(s => s.includes("<languageId>2</languageId>")); // slovenski
-
-    const subtitles = items.map(s => {
-      const url = s.match(/<download>(.*?)<\/download>/)?.[1];
-      const name = s.match(/<release>(.*?)<\/release>/)?.[1];
-      return {
-        id: "sl",
-        type: "subtitles",
-        url,
-        lang: "Slovenian",
-        title: name || "Slovenski podnapisi",
-      };
-    });
-
-    res.json({ subtitles });
-  } catch (e) {
-    res.json({ subtitles: [] });
-  }
-});
-
-// root
 app.get("/", (req, res) => {
   res.send("✔ Podnapisi.NET FAST addon running!");
 });
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log("FAST Podnapisi running on", PORT));
+// -------- MANIFEST --------
+app.get("/manifest.json", (req, res) => {
+  res.json({
+    id: "podnapisinet-fast-sl",
+    version: "1.0.0",
+    name: "Podnapisi.NET FAST (SL)",
+    description: "Ultrahitri slovenski podnapisi",
+    types: ["movie", "series"],
+    catalogs: [],
+    resources: ["subtitles"],
+    idPrefixes: ["tt"]
+  });
+});
+
+// ------- SUBTITLES HANDLER --------
+app.get("/subtitles/:type/:imdbId.json", async (req, res) => {
+  const imdbId = req.params.imdbId.replace("tt", "");
+
+  try {
+    const url = `https://www.podnapisi.net/subtitles/search/?keywords=&imdb=${imdbId}&language=sl`;
+    const html = await fetch(url).then(r => r.text());
+    const $ = cheerio.load(html);
+
+    const items = [];
+
+    $(".subtitle-entry").each((i, el) => {
+      const title = $(el).find(".release > a").text().trim();
+      const link = $(el).find(".download-button").attr("href");
+
+      if (link) {
+        items.push({
+          id: `podnapisi-${imdbId}-${i}`,
+          url: `https://www.podnapisi.net${link}`,
+          lang: "sl",
+          langShort: "sl",
+          title: title || "Slovenski podnapisi"
+        });
+      }
+    });
+
+    res.json({ subtitles: items });
+  } catch (err) {
+    console.error(err);
+    res.json({ subtitles: [] });
+  }
+});
+
+app.listen(PORT, () =>
+  console.log(`🚀 Podnapisi.NET FAST listening on port ${PORT}`)
+);
