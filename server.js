@@ -1,54 +1,64 @@
 import express from "express";
 import cors from "cors";
 import fetch from "node-fetch";
-import * as cheerio from "cheerio";
+import cheerio from "cheerio";
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
-const BASE = "https://www.podnapisi.net";
-
-app.get("/", (req, res) => {
-  res.send("✔ Podnapisi.NET FAST SL running!");
-});
+const manifest = {
+  id: "podnapisinet-fast-sl",
+  version: "1.0.0",
+  name: "Podnapisi.NET FAST (SL)",
+  description: "Hitri slovenski podnapisi iz Podnapisi.NET brez Puppeteerja",
+  types: ["movie", "series"],
+  resources: ["subtitles"],
+  idPrefixes: ["tt"]
+};
 
 app.get("/manifest.json", (req, res) => {
-  res.sendFile(process.cwd() + "/manifest.json");
+  res.json(manifest);
 });
 
-app.get("/subtitles/:type/:imdb", async (req, res) => {
-  const imdb = req.params.imdb.replace("tt", "");
-
-  const url =
-    `${BASE}/sl/subtitles/search/?keywords=&movie_slug=&imdb_id=${imdb}&year=&seasons=&episode=&sub_language=sl&format=&sort=downloads`;
+app.get("/subtitles/:type/:id/:extra?.json", async (req, res) => {
+  const imdbId = req.params.id;
+  console.log("🎬 Zahteva za IMDb:", imdbId);
 
   try {
-    const html = await fetch(url).then(r => r.text());
+    // OMDb API za naslov
+    const omdbRes = await fetch(`https://www.omdbapi.com/?i=${imdbId}&apikey=thewdb`);
+    const omdbData = await omdbRes.json();
+    const title = omdbData?.Title || imdbId;
+
+    // Podnapisi.net search
+    const searchUrl = `https://www.podnapisi.net/sl/subtitles/search/?keywords=${encodeURIComponent(title)}&language=sl`;
+    const html = await (await fetch(searchUrl)).text();
     const $ = cheerio.load(html);
 
-    const subtitles = [];
-
-    $(".table tbody tr").each((i, row) => {
-      const link = $(row).find("a").attr("href");
-      const title = $(row).find("a").text().trim();
-
-      if (!link) return;
-
-      subtitles.push({
-        id: "sl-" + i,
-        lang: "sl",
-        downloads: 100,
-        name: title,
-        url: BASE + link
-      });
+    const results = [];
+    $("table.table tbody tr").each((i, row) => {
+      const link = $(row).find("a[href*='/download']").attr("href");
+      const name = $(row).find("a[href*='/download']").text().trim();
+      if (link) {
+        results.push({
+          id: `fast-${i}`,
+          url: "https://www.podnapisi.net" + link,
+          lang: "sl",
+          name: "🇸🇮 " + name
+        });
+      }
     });
 
-    res.json({ subtitles });
-  } catch (e) {
-    console.error("Scrape error:", e);
+    console.log(`✅ Najdenih ${results.length} podnapisov`);
+    res.json({ subtitles: results });
+  } catch (err) {
+    console.error("Napaka:", err.message);
     res.json({ subtitles: [] });
   }
 });
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log("▶ FAST SL addon listening on port", PORT));
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ FAST Podnapisi.NET addon aktiven na http://127.0.0.1:${PORT}/manifest.json`);
+});
