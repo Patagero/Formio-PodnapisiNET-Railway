@@ -1,10 +1,10 @@
 {
-  "id": "podnapisinet-fast-sl",
+  "id": "podnapisinet-fast",
   "version": "1.0.0",
-  "name": "Podnapisi.NET FAST (SL)",
-  "description": "Ultrahitri slovenski podnapisi iz Podnapisi.NET brez browserja",
-  "types": ["movie", "series"],
+  "name": "Podnapisi.NET FAST",
+  "description": "Ultra fast subtitles from Podnapisi.NET",
+  "types": ["subtitles"],
   "catalogs": [],
   "resources": ["subtitles"],
-  "idPrefixes": ["tt"]
+  "subtitleLanguages": ["sl", "en", "hr", "sr", "bs"]
 }
