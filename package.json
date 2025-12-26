@@ -9,6 +9,7 @@
   "dependencies": {
     "express": "^4.19.2",
     "cheerio": "^1.0.0",
-    "unzipper": "^0.10.11"
+    "unzipper": "^0.10.11",
+    "cors": "^2.8.5"
   }
 }
