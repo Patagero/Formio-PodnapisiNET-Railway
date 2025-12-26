@@ -1,161 +1,146 @@
 import express from "express";
-import cors from "cors";
-import { load } from "cheerio";
+import fetch from "node-fetch";
+import unzipper from "unzipper";
+import * as cheerio from "cheerio";
+import fs from "fs";
+import path from "path";
+import os from "os";
 
 const app = express();
-app.use(cors());
-
 const PORT = process.env.PORT || 10000;
+const BASE_URL = process.env.BASE_URL || "https://formio-podnapisinetv3.onrender.com";
+
+/* ================= MANIFEST ================= */
 
 const manifest = {
-  id: "org.podnapisi.fastsl",
-  version: "1.0.0",
-  name: "Podnapisi.NET FAST (SL)",
-  description: "Slovenski podnapisi iz Podnapisi.NET (HTML scrape + OMDb title)",
-  types: ["movie", "series"],
+  id: "org.podnapisi.final.sl",
+  version: "5.0.0",
+  name: "Podnapisi.NET 🇸🇮 (FINAL)",
+  description: "Slovenski podnapisi iz Podnapisi.NET – razpakirani .srt (Stremio ready)",
   resources: ["subtitles"],
+  types: ["movie", "series"],
   idPrefixes: ["tt"]
 };
 
-app.get("/manifest.json", (req, res) => res.json(manifest));
+app.get("/manifest.json", (_, res) => {
+  res.json(manifest);
+});
 
-function normalize(str) {
-  return (str || "")
-    .toLowerCase()
-    .replace(/č/g, "c")
-    .replace(/š/g, "s")
-    .replace(/ž/g, "z")
-    .replace(/[^a-z0-9]+/g, "");
-}
+/* ================= STATIC FILES ================= */
 
-function parseExtra(extra) {
-  if (!extra) return {};
-  const params = {};
-  extra.split("&").forEach(part => {
-    const [k, v] = part.split("=");
-    if (k) params[k] = decodeURIComponent(v || "");
-  });
-  return params;
-}
+const TMP_DIR = path.join(os.tmpdir(), "podnapisi");
+fs.mkdirSync(TMP_DIR, { recursive: true });
+app.use("/files", express.static(TMP_DIR));
+
+/* ================= HEADERS ================= */
 
 const HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language": "sl-SI,sl;q=0.9,en-US;q=0.7,en;q=0.6",
+  "Accept": "text/html",
+  "Accept-Language": "sl-SI,sl;q=0.9,en;q=0.5",
   "Referer": "https://www.podnapisi.net/"
 };
 
-async function fetchText(url) {
-  const r = await fetch(url, { headers: HEADERS });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return await r.text();
+/* ================= HELPERS ================= */
+
+function clean(str = "") {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-async function fetchJson(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return await r.json();
-}
+/* ================= SUBTITLES ================= */
 
-app.get("/subtitles/:type/:id/:extra?.json", async (req, res) => {
-  const type = req.params.type;      // movie|series
-  const imdbId = req.params.id;      // tt...
-  const extraRaw = req.params.extra || "";
-  const extra = parseExtra(extraRaw);
-
-  console.log("==================================================");
-  console.log(`🎬 Request: type=${type}, imdb=${imdbId}, extra=${extraRaw}`);
+app.get("/subtitles/:type/:id.json", async (req, res) => {
+  const imdbId = req.params.id;
+  console.log("🔍 Stremio request:", imdbId);
 
   try {
-    // 1) Title from OMDb
-    const omdb = await fetchJson(`https://www.omdbapi.com/?i=${imdbId}&apikey=thewdb`);
+    /* 1️⃣ IMDb → title */
+    const omdb = await fetch(`https://www.omdbapi.com/?i=${imdbId}&apikey=thewdb`).then(r => r.json());
     const title = omdb?.Title || imdbId;
-    const year = (omdb?.Year || "").replace(/\D+/g, "");
-    console.log(`🎬 OMDb: ${title} (${year || "—"})`);
+    const year = omdb?.Year || "";
+    const q = clean(title);
 
-    // 2) Search Podnapisi
+    console.log(`🎬 ${title} (${year})`);
+
+    /* 2️⃣ Podnapisi.NET search */
     const searchUrl =
       `https://www.podnapisi.net/sl/subtitles/search/?keywords=${encodeURIComponent(title)}&language=sl`;
 
-    console.log(`🌍 Search: ${searchUrl}`);
-    const html = await fetchText(searchUrl);
-    const $ = load(html);
+    const html = await fetch(searchUrl, { headers: HEADERS }).then(r => r.text());
+    const $ = cheerio.load(html);
 
-    // 3) Parse results
-    const raw = [];
+    const candidates = [];
 
-    // Podnapisi pogosto kaže rezultate v tabeli
-    $("table.table tbody tr").each((i, row) => {
-      const a = $(row).find("a[href*='/download']");
-      const href = a.attr("href");
-      const name = a.text().trim();
-      if (!href || !name) return;
+    $("a[href*='/download']").each((_, el) => {
+      const href = $(el).attr("href");
+      const name = $(el).text().trim();
+      if (!href) return;
 
-      const full = href.startsWith("http") ? href : `https://www.podnapisi.net${href}`;
-      raw.push({ index: i + 1, link: full, title: name });
+      candidates.push({
+        name,
+        url: href.startsWith("http") ? href : `https://www.podnapisi.net${href}`
+      });
     });
 
-    // Fallback regex
-    if (raw.length === 0) {
-      const regex = /href="([^"]*\/download)"[^>]*>([^<]+)<\/a>/g;
-      let m;
-      while ((m = regex.exec(html)) !== null) {
-        const link = m[1].startsWith("http") ? m[1] : `https://www.podnapisi.net${m[1]}`;
-        raw.push({ index: raw.length + 1, link, title: (m[2] || "").trim() });
-      }
+    if (!candidates.length) {
+      console.log("❌ No results");
+      return res.json({ subtitles: [] });
     }
 
-    console.log(`✅ Found raw: ${raw.length}`);
+    /* 3️⃣ Filter */
+    const filtered = candidates.filter(s => clean(s.name).includes(q.slice(0, 4)));
 
-    // 4) Filter tolerant
-    const cleanTitle = normalize(title);
+    console.log(`✅ Matches: ${filtered.length}`);
 
-    const filtered = raw.filter(r => {
-      const t = r.title || "";
-      const n = normalize(t);
+    /* 4️⃣ Download + unzip */
+    const subtitles = [];
 
-      const titleOk =
-        n.includes(cleanTitle) ||
-        n.startsWith(cleanTitle) ||
-        (year && n.includes(year) && n.includes(cleanTitle)) ||
-        n.includes(cleanTitle.slice(0, 4));
+    for (let i = 0; i < Math.min(filtered.length, 3); i++) {
+      const sub = filtered[i];
+      const zipBuf = await fetch(sub.url).then(r => r.arrayBuffer());
 
-      // malo grob filter za movie (da ne pobere serij)
-      const isWrong = type === "movie" && /(season|episode|s\d{1,2}e\d{1,2}|serija)/i.test(t);
+      const dir = path.join(TMP_DIR, `${imdbId}-${i}`);
+      fs.mkdirSync(dir, { recursive: true });
 
-      return titleOk && !isWrong;
-    });
+      const zip = await unzipper.Open.buffer(Buffer.from(zipBuf));
+      const srt = zip.files.find(f => f.path.endsWith(".srt"));
+      if (!srt) continue;
 
-    console.log(`🧩 After filter: ${filtered.length}`);
+      const srtPath = path.join(dir, path.basename(srt.path));
+      await new Promise((ok, err) =>
+        srt.stream().pipe(fs.createWriteStream(srtPath)).on("finish", ok).on("error", err)
+      );
 
-    if (!filtered.length) return res.json({ subtitles: [] });
-
-    // 5) Return to Stremio
-    const subtitles = filtered.slice(0, 30).map((r, i) => {
-      const displayName = extra.filename
-        ? `🇸🇮 ${extra.filename} → ${r.title}`
-        : `🇸🇮 ${r.title}`;
-
-      return {
-        id: `podnapisi-fast-${imdbId}-${i + 1}`,
-        url: r.link,       // Podnapisi download je ZIP -> Stremio ga zna potegniti
+      subtitles.push({
+        id: `sl-${i}`,
         lang: "sl",
-        name: displayName
-      };
-    });
+        format: "srt",
+        name: `🇸🇮 ${sub.name}`,
+        url: `${BASE_URL}/files/${imdbId}-${i}/${path.basename(srt.path)}`
+      });
+    }
 
+    console.log(`🎉 Returned: ${subtitles.length}`);
     res.json({ subtitles });
-  } catch (err) {
-    console.error("❌ ERROR:", err.message);
+
+  } catch (e) {
+    console.error("❌ ERROR:", e.message);
     res.json({ subtitles: [] });
   }
 });
 
-app.get("/", (req, res) => res.send("✅ Podnapisi.NET FAST (SL) Stremio addon running"));
+/* ================= ROOT ================= */
+
+app.get("/", (_, res) => {
+  res.send("Podnapisi.NET FINAL addon running");
+});
+
+/* ================= START ================= */
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("==================================================");
-  console.log(`✅ Running on port ${PORT}`);
-  console.log("==================================================");
+  console.log("=======================================");
+  console.log("✅ Podnapisi.NET FINAL 🇸🇮 READY");
+  console.log(`🌐 ${BASE_URL}/manifest.json`);
+  console.log("=======================================");
 });
