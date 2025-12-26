@@ -1,15 +1,13 @@
 {
   "name": "podnapisi-stremio-addon",
-  "version": "1.0.0",
+  "version": "6.0.0",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "cheerio": "^1.0.0",
-    "unzipper": "^0.10.11",
-    "cors": "^2.8.5"
+    "node-fetch": "^3.3.2",
+    "cheerio": "^1.0.0-rc.12"
   }
 }
