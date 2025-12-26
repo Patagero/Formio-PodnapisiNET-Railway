@@ -1,5 +1,7 @@
 import express from "express";
+import cors from "cors";
 import * as cheerio from "cheerio";
+import unzipper from "unzipper";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -7,6 +9,10 @@ import os from "os";
 const app = express();
 const PORT = process.env.PORT || 10000;
 const BASE_URL = process.env.BASE_URL || "https://formio-podnapisinetv3.onrender.com";
+
+/* ================= MIDDLEWARE ================= */
+
+app.use(cors());
 
 /* ================= MANIFEST ================= */
 
@@ -20,7 +26,12 @@ const manifest = {
   idPrefixes: ["tt"]
 };
 
+app.head("/manifest.json", (_, res) => {
+  res.status(200).end();
+});
+
 app.get("/manifest.json", (_, res) => {
+  res.setHeader("Content-Type", "application/json");
   res.json(manifest);
 });
 
@@ -29,16 +40,6 @@ app.get("/manifest.json", (_, res) => {
 const TMP_DIR = path.join(os.tmpdir(), "podnapisi");
 fs.mkdirSync(TMP_DIR, { recursive: true });
 app.use("/files", express.static(TMP_DIR));
-
-/* ================= HEADERS ================= */
-
-const HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-  "Accept": "text/html",
-  "Accept-Language": "sl-SI,sl;q=0.9,en;q=0.5",
-  "Referer": "https://www.podnapisi.net/"
-};
 
 /* ================= HELPERS ================= */
 
@@ -53,19 +54,21 @@ app.get("/subtitles/:type/:id.json", async (req, res) => {
   console.log("🔍 Stremio request:", imdbId);
 
   try {
-    /* 1️⃣ IMDb → title */
-    const omdb = await fetch(`https://www.omdbapi.com/?i=${imdbId}&apikey=thewdb`).then(r => r.json());
+    // 1️⃣ IMDb title
+    const omdbRes = await fetch(`https://www.omdbapi.com/?i=${imdbId}&apikey=thewdb`);
+    const omdb = await omdbRes.json();
+
     const title = omdb?.Title || imdbId;
     const year = omdb?.Year || "";
     const q = clean(title);
 
     console.log(`🎬 ${title} (${year})`);
 
-    /* 2️⃣ Podnapisi.NET search */
+    // 2️⃣ Podnapisi.NET search
     const searchUrl =
       `https://www.podnapisi.net/sl/subtitles/search/?keywords=${encodeURIComponent(title)}&language=sl`;
 
-    const html = await fetch(searchUrl, { headers: HEADERS }).then(r => r.text());
+    const html = await fetch(searchUrl).then(r => r.text());
     const $ = cheerio.load(html);
 
     const candidates = [];
@@ -86,28 +89,31 @@ app.get("/subtitles/:type/:id.json", async (req, res) => {
       return res.json({ subtitles: [] });
     }
 
-    /* 3️⃣ Filter */
-    const filtered = candidates.filter(s => clean(s.name).includes(q.slice(0, 4)));
+    const filtered = candidates.filter(s =>
+      clean(s.name).includes(q.slice(0, 4))
+    );
 
-    console.log(`✅ Matches: ${filtered.length}`);
-
-    /* 4️⃣ Download + unzip */
     const subtitles = [];
 
     for (let i = 0; i < Math.min(filtered.length, 3); i++) {
       const sub = filtered[i];
+
       const zipBuf = await fetch(sub.url).then(r => r.arrayBuffer());
+      const zip = await unzipper.Open.buffer(Buffer.from(zipBuf));
+
+      const srt = zip.files.find(f => f.path.endsWith(".srt"));
+      if (!srt) continue;
 
       const dir = path.join(TMP_DIR, `${imdbId}-${i}`);
       fs.mkdirSync(dir, { recursive: true });
 
-      const zip = await unzipper.Open.buffer(Buffer.from(zipBuf));
-      const srt = zip.files.find(f => f.path.endsWith(".srt"));
-      if (!srt) continue;
-
       const srtPath = path.join(dir, path.basename(srt.path));
+
       await new Promise((ok, err) =>
-        srt.stream().pipe(fs.createWriteStream(srtPath)).on("finish", ok).on("error", err)
+        srt.stream()
+          .pipe(fs.createWriteStream(srtPath))
+          .on("finish", ok)
+          .on("error", err)
       );
 
       subtitles.push({
@@ -123,7 +129,7 @@ app.get("/subtitles/:type/:id.json", async (req, res) => {
     res.json({ subtitles });
 
   } catch (e) {
-    console.error("❌ ERROR:", e.message);
+    console.error("❌ ERROR:", e);
     res.json({ subtitles: [] });
   }
 });
